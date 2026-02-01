@@ -5,9 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 export interface ApiKeys {
   hashnode_token?: string;
   hashnode_publication_id?: string;
-  medium_token?: string;
-  openai_key?: string;
-  supadata_key?: string;
+  openai_api_key?: string;
+  supadata_api_key?: string;
 }
 
 export interface ApiKeysResult {
@@ -34,7 +33,7 @@ export async function getApiKeys(): Promise<ApiKeysResult> {
 
     const { data, error } = await supabase
       .from("user_api_keys")
-      .select("hashnode_token, hashnode_publication_id, medium_token, openai_key, supadata_key")
+      .select("hashnode_token, hashnode_publication_id, openai_api_key, supadata_api_key")
       .eq("user_id", user.id)
       .single();
 
@@ -89,9 +88,8 @@ export async function saveApiKeys(keys: ApiKeys): Promise<ApiKeysResult> {
           user_id: user.id,
           hashnode_token: keys.hashnode_token || null,
           hashnode_publication_id: keys.hashnode_publication_id || null,
-          medium_token: keys.medium_token || null,
-          openai_key: keys.openai_key || null,
-          supadata_key: keys.supadata_key || null,
+          openai_api_key: keys.openai_api_key || null,
+          supadata_api_key: keys.supadata_api_key || null,
           updated_at: new Date().toISOString(),
         },
         {
