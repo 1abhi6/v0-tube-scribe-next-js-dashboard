@@ -24,39 +24,65 @@ export default function SignUpPage() {
     setIsLoading(true);
     setError(null);
 
-    const supabase = createClient();
+    try {
+      const supabase = createClient();
 
-    // Sign up without email confirmation
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: name,
+      // Sign up
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: name,
+          },
         },
-      },
-    });
+      });
 
-    if (signUpError) {
-      setError(signUpError.message);
+      if (signUpError) {
+        setError(signUpError.message);
+        setIsLoading(false);
+        return;
+      }
+
+      // Check if email confirmation is required
+      if (signUpData.user && !signUpData.session) {
+        // Email confirmation is enabled - user needs to confirm email
+        setError("Please check your email to confirm your account before signing in.");
+        setIsLoading(false);
+        return;
+      }
+
+      // If we have a session, user is already signed in
+      if (signUpData.session) {
+        router.push("/dashboard");
+        router.refresh();
+        return;
+      }
+
+      // Try to sign in (for cases where email confirmation is disabled)
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        setError(signInError.message);
+        setIsLoading(false);
+        return;
+      }
+
+      if (!signInData.session) {
+        setError("Unable to create session. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred");
       setIsLoading(false);
-      return;
     }
-
-    // Auto sign in after signup
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (signInError) {
-      setError(signInError.message);
-      setIsLoading(false);
-      return;
-    }
-
-    router.push("/dashboard");
-    router.refresh();
   };
 
   return (
