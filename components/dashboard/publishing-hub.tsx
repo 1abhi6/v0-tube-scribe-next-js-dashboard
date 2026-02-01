@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,8 +14,10 @@ import {
   EyeOff,
   AlertCircle,
   Link as LinkIcon,
+  Save,
 } from "lucide-react";
 import { publishToHashnodeAction } from "@/app/actions";
+import { getApiKeys, saveApiKeys } from "@/app/api-keys-actions";
 import { useToast } from "@/hooks/use-toast";
 
 interface PublishingHubProps {
@@ -33,6 +35,82 @@ export function PublishingHub({ hasContent, markdownContent }: PublishingHubProp
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
   const [isHashnodeConnected, setIsHashnodeConnected] = useState(false);
+  
+  // API keys state
+  const [isLoadingKeys, setIsLoadingKeys] = useState(true);
+  const [isSavingKeys, setIsSavingKeys] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [savedToken, setSavedToken] = useState("");
+  const [savedPublicationId, setSavedPublicationId] = useState("");
+
+  // Load API keys on mount
+  useEffect(() => {
+    async function loadApiKeys() {
+      try {
+        const result = await getApiKeys();
+        if (result.success && result.data) {
+          const token = result.data.hashnode_token || "";
+          const pubId = result.data.hashnode_publication_id || "";
+          setHashnodeToken(token);
+          setHashnodePublicationId(pubId);
+          setSavedToken(token);
+          setSavedPublicationId(pubId);
+          if (token && pubId) {
+            setIsHashnodeConnected(true);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load API keys:", error);
+      } finally {
+        setIsLoadingKeys(false);
+      }
+    }
+    loadApiKeys();
+  }, []);
+
+  // Track unsaved changes
+  useEffect(() => {
+    const tokenChanged = hashnodeToken !== savedToken;
+    const pubIdChanged = hashnodePublicationId !== savedPublicationId;
+    setHasUnsavedChanges(tokenChanged || pubIdChanged);
+  }, [hashnodeToken, hashnodePublicationId, savedToken, savedPublicationId]);
+
+  const handleSaveKeys = async () => {
+    setIsSavingKeys(true);
+    try {
+      const result = await saveApiKeys({
+        hashnode_token: hashnodeToken,
+        hashnode_publication_id: hashnodePublicationId,
+      });
+      
+      if (result.success) {
+        setSavedToken(hashnodeToken);
+        setSavedPublicationId(hashnodePublicationId);
+        setHasUnsavedChanges(false);
+        if (hashnodeToken && hashnodePublicationId) {
+          setIsHashnodeConnected(true);
+        }
+        toast({
+          title: "Credentials saved",
+          description: "Your Hashnode credentials have been securely saved.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Failed to save",
+          description: result.error || "Could not save your credentials.",
+        });
+      }
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred while saving.",
+      });
+    } finally {
+      setIsSavingKeys(false);
+    }
+  };
 
   const handleHashnodePublish = async () => {
     if (!hashnodeToken || !hashnodePublicationId) {
@@ -74,7 +152,6 @@ export function PublishingHub({ hasContent, markdownContent }: PublishingHubProp
           ),
         });
       } else {
-        // Check for invalid token error
         if (result.error?.toLowerCase().includes("invalid token")) {
           toast({
             variant: "destructive",
@@ -110,6 +187,22 @@ export function PublishingHub({ hasContent, markdownContent }: PublishingHubProp
             Publishing Hub
           </h3>
         </div>
+        {hasUnsavedChanges && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1.5 text-xs bg-transparent"
+            onClick={handleSaveKeys}
+            disabled={isSavingKeys}
+          >
+            {isSavingKeys ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Save className="h-3 w-3" />
+            )}
+            Save
+          </Button>
+        )}
       </div>
 
       {/* Platform Cards */}
@@ -175,7 +268,9 @@ export function PublishingHub({ hasContent, markdownContent }: PublishingHubProp
                   <span
                     className={cn(
                       "rounded-full px-2 py-0.5 text-xs font-medium",
-                      isHashnodeConnected || publishedUrl
+                      publishedUrl
+                        ? "bg-primary/20 text-primary"
+                        : isHashnodeConnected
                         ? "bg-primary/20 text-primary"
                         : "bg-secondary text-muted-foreground"
                     )}
@@ -190,127 +285,136 @@ export function PublishingHub({ hasContent, markdownContent }: PublishingHubProp
             </div>
           </div>
 
-          {/* Success State */}
-          {publishedUrl && (
-            <div className="mt-4 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 p-3">
-              <CheckCircle className="h-5 w-5 shrink-0 text-primary" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">
-                  Successfully published!
-                </p>
-                <a
-                  href={publishedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-primary hover:underline truncate"
-                >
-                  <LinkIcon className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{publishedUrl}</span>
-                </a>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="shrink-0 gap-1 bg-transparent"
-                onClick={() => window.open(publishedUrl, "_blank")}
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                View
-              </Button>
+          {/* Loading State */}
+          {isLoadingKeys ? (
+            <div className="mt-4 flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          )}
-
-          {/* Input Fields */}
-          <div className="mt-4 space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="hashnode-token" className="text-xs text-muted-foreground">
-                Personal Access Token
-              </Label>
-              <div className="relative">
-                <Input
-                  id="hashnode-token"
-                  type={showToken ? "text" : "password"}
-                  placeholder="Enter your Hashnode PAT"
-                  value={hashnodeToken}
-                  onChange={(e) => setHashnodeToken(e.target.value)}
-                  className="pr-10 text-sm bg-background border-border"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowToken(!showToken)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showToken ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground/70">
-                Get it from{" "}
-                <a
-                  href="https://hashnode.com/settings/developer"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  Hashnode Settings
-                </a>
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="publication-id" className="text-xs text-muted-foreground">
-                Publication ID
-              </Label>
-              <Input
-                id="publication-id"
-                type="text"
-                placeholder="e.g., 5f5678..."
-                value={hashnodePublicationId}
-                onChange={(e) => setHashnodePublicationId(e.target.value)}
-                className="text-sm bg-background border-border"
-              />
-              <p className="text-xs text-muted-foreground/70">
-                Found in your blog{"'"}s dashboard URL
-              </p>
-            </div>
-          </div>
-
-          {/* Publish Button */}
-          <div className="mt-4">
-            <Button
-              size="sm"
-              className="w-full gap-2"
-              disabled={!hasContent || isPublishing || !hashnodeToken || !hashnodePublicationId}
-              onClick={handleHashnodePublish}
-            >
-              {isPublishing ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Publishing...
-                </>
-              ) : publishedUrl ? (
-                <>
-                  <CheckCircle className="h-3.5 w-3.5" />
-                  Publish Again
-                </>
-              ) : (
-                <>
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Publish to Hashnode
-                </>
+          ) : (
+            <>
+              {/* Success State */}
+              {publishedUrl && (
+                <div className="mt-4 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 p-3">
+                  <CheckCircle className="h-5 w-5 shrink-0 text-primary" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      Successfully published!
+                    </p>
+                    <a
+                      href={publishedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-primary hover:underline truncate"
+                    >
+                      <LinkIcon className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{publishedUrl}</span>
+                    </a>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 gap-1 bg-transparent"
+                    onClick={() => window.open(publishedUrl, "_blank")}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View
+                  </Button>
+                </div>
               )}
-            </Button>
-          </div>
 
-          {/* Warning for no content */}
-          {!hasContent && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-              <AlertCircle className="h-3.5 w-3.5" />
-              Generate an article first to publish
-            </div>
+              {/* Input Fields */}
+              <div className="mt-4 space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="hashnode-token" className="text-xs text-muted-foreground">
+                    Personal Access Token
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="hashnode-token"
+                      type={showToken ? "text" : "password"}
+                      placeholder="Enter your Hashnode PAT"
+                      value={hashnodeToken}
+                      onChange={(e) => setHashnodeToken(e.target.value)}
+                      className="pr-10 text-sm bg-background border-border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowToken(!showToken)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showToken ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground/70">
+                    Get it from{" "}
+                    <a
+                      href="https://hashnode.com/settings/developer"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Hashnode Settings
+                    </a>
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="publication-id" className="text-xs text-muted-foreground">
+                    Publication ID
+                  </Label>
+                  <Input
+                    id="publication-id"
+                    type="text"
+                    placeholder="e.g., 5f5678..."
+                    value={hashnodePublicationId}
+                    onChange={(e) => setHashnodePublicationId(e.target.value)}
+                    className="text-sm bg-background border-border"
+                  />
+                  <p className="text-xs text-muted-foreground/70">
+                    Found in your blog{"'"}s dashboard URL
+                  </p>
+                </div>
+              </div>
+
+              {/* Publish Button */}
+              <div className="mt-4">
+                <Button
+                  size="sm"
+                  className="w-full gap-2"
+                  disabled={!hasContent || isPublishing || !hashnodeToken || !hashnodePublicationId}
+                  onClick={handleHashnodePublish}
+                >
+                  {isPublishing ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Publishing...
+                    </>
+                  ) : publishedUrl ? (
+                    <>
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      Publish Again
+                    </>
+                  ) : (
+                    <>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Publish to Hashnode
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Warning for no content */}
+              {!hasContent && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  Generate an article first to publish
+                </div>
+              )}
+            </>
           )}
         </div>
 
