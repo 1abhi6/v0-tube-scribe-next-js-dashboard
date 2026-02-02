@@ -17,7 +17,7 @@ import {
   Save,
 } from "lucide-react";
 import { publishToHashnodeAction } from "@/app/actions";
-import { getApiKeys, saveApiKeys } from "@/app/api-keys-actions";
+import { getApiKeys, saveApiKeys, isSupabaseAvailable } from "@/app/api-keys-actions";
 import { useToast } from "@/hooks/use-toast";
 
 interface PublishingHubProps {
@@ -43,9 +43,15 @@ export function PublishingHub({ hasContent, markdownContent }: PublishingHubProp
   const [savedToken, setSavedToken] = useState("");
   const [savedPublicationId, setSavedPublicationId] = useState("");
 
-  // Load API keys on mount
+  // Load API keys on mount (only if Supabase is available)
   useEffect(() => {
     async function loadApiKeys() {
+      // Skip if Supabase is not configured - just use local state
+      if (!isSupabaseAvailable()) {
+        setIsLoadingKeys(false);
+        return;
+      }
+
       try {
         const result = await getApiKeys();
         if (result.success && result.data) {

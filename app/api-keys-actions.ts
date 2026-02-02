@@ -2,6 +2,13 @@
 
 import { createClient } from "@/lib/supabase/server";
 
+/**
+ * Check if Supabase is configured (can be called from client)
+ */
+export function isSupabaseAvailable(): boolean {
+  return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+}
+
 export interface ApiKeys {
   hashnode_token?: string;
   hashnode_publication_id?: string;
@@ -21,6 +28,13 @@ export interface ApiKeysResult {
 export async function getApiKeys(): Promise<ApiKeysResult> {
   try {
     const supabase = await createClient();
+    
+    if (!supabase) {
+      return {
+        success: true,
+        data: {},
+      };
+    }
     
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
@@ -70,6 +84,14 @@ export async function getApiKeys(): Promise<ApiKeysResult> {
 export async function saveApiKeys(keys: ApiKeys): Promise<ApiKeysResult> {
   try {
     const supabase = await createClient();
+    
+    if (!supabase) {
+      // In demo mode, just return success (keys are stored in local state only)
+      return {
+        success: true,
+        data: keys,
+      };
+    }
     
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
@@ -123,6 +145,10 @@ export async function saveApiKeys(keys: ApiKeys): Promise<ApiKeysResult> {
 export async function deleteApiKeys(): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = await createClient();
+    
+    if (!supabase) {
+      return { success: true };
+    }
     
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
